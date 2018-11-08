@@ -196,6 +196,11 @@ size_t runtime::gpu::CUDNNEmitter::build_reduce_forward(const cudnnReduceTensorO
     size_t workspace_size = 0;
     CUDNN_SAFE_CALL(cudnnGetReductionWorkspaceSize(
         *m_ctx->cudnn_handle, desc, input_desc, output_desc, &workspace_size));
+    size_t input_buffer_size = shape_size(input_shape) * input_type.size();
+    if (workspace_size < input_buffer_size)
+    {
+        workspace_size = input_buffer_size;
+    }
     size_t workspace_idx = allocator.reserve_workspace(workspace_size);
 
     void* alpha = m_host_parameters.allocate_by_datatype(data_type, 1.0);
@@ -529,12 +534,10 @@ size_t runtime::gpu::CUDNNEmitter::build_primitive(const op::Convolution* node)
         idx_workspace = allocator.reserve_workspace(temp_size, true);
 
         auto& cuda_emitter = m_primitive_emitter->get_cuda_emitter();
-        pad_index = cuda_emitter->build_pad({{args[0].get_element_type().c_type_string(),
-                                              out[0].get_element_type().c_type_string()}},
-                                            input_shape,
-                                            input_shape_padded,
-                                            padding_below,
-                                            padding_interior);
+        std::vector<std::string> dtypes = {args[0].get_element_type().c_type_string(),
+                                           out[0].get_element_type().c_type_string()};
+        pad_index = cuda_emitter->build_pad(
+            dtypes, input_shape, input_shape_padded, padding_below, padding_interior);
 
         // asymetric padding has been applied, zero out padding vectors to
         // ensure cudnn does not assume padding
@@ -653,11 +656,9 @@ size_t runtime::gpu::CUDNNEmitter::build_primitive(const op::ConvolutionBackprop
         idx_workspace = allocator.reserve_workspace(temp_size, true);
 
         auto& cuda_emitter = m_primitive_emitter->get_cuda_emitter();
-        pad_index = cuda_emitter->build_pad({{input_type, output_type}},
-                                            output_shape,
-                                            output_shape_padded,
-                                            padding_below,
-                                            padding_interior);
+        std::vector<std::string> dtypes = {input_type, output_type};
+        pad_index = cuda_emitter->build_pad(
+            dtypes, output_shape, output_shape_padded, padding_below, padding_interior);
 
         slice_index = cuda_emitter->build_slice({{input_type, output_type}},
                                                 output_shape_padded,
@@ -772,11 +773,9 @@ size_t runtime::gpu::CUDNNEmitter::build_primitive(const op::ConvolutionBackprop
         idx_workspace = allocator.reserve_workspace(temp_size, true);
 
         auto& cuda_emitter = m_primitive_emitter->get_cuda_emitter();
-        pad_index = cuda_emitter->build_pad({{input_type, output_type}},
-                                            input_shape_0,
-                                            input_shape_padded,
-                                            padding_below,
-                                            padding_interior);
+        std::vector<std::string> dtypes = {input_type, output_type};
+        pad_index = cuda_emitter->build_pad(
+            dtypes, input_shape_0, input_shape_padded, padding_below, padding_interior);
 
         // asymetric padding has been applied, zero out padding vectors to
         // ensure cudnn does not assume padding
@@ -865,11 +864,9 @@ size_t runtime::gpu::CUDNNEmitter::build_primitive(const op::MaxPool* node)
                                                    padded_size * args[0].get_element_type().size());
 
         auto& cuda_emitter = m_primitive_emitter->get_cuda_emitter();
-        pad_index = cuda_emitter->build_pad({{input_type, output_type}},
-                                            input_shape,
-                                            input_shape_padded,
-                                            padding_below,
-                                            padding_interior);
+        std::vector<std::string> dtypes = {input_type, output_type};
+        pad_index = cuda_emitter->build_pad(
+            dtypes, input_shape, input_shape_padded, padding_below, padding_interior);
 
         // asymetric padding has been applied, zero out padding vectors to
         // ensure cuDNN does not assume padding during pooling
